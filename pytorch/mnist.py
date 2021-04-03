@@ -7,6 +7,7 @@ import optim
 from torchvision import datasets, transforms
 import csv
 import distutils
+from distutils import util #MZ addition
 import os
 from contextlib import redirect_stdout
 import time
