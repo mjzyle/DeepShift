@@ -7,18 +7,110 @@ import optim
 from torchvision import datasets, transforms
 import csv
 import distutils
-from distutils import util #MZ addition
 import os
 from contextlib import redirect_stdout
 import time
-import torchsummary
+import torchsummary 
 import mnist
 import copy
-
 import deepshift
 import unoptimized
 from deepshift.convert import convert_to_shift, round_shift_weights, count_layer_type
 from unoptimized.convert import convert_to_unoptimized
+
+
+## MATT ADDITIONS ############################################################################
+
+import psutil
+import threading
+import pandas as pd 
+import datetime as dt
+from distutils import util
+
+is_training = False
+is_testing = False
+training_perf = pd.DataFrame()
+testing_perf = pd.DataFrame()
+pid = os.getpid()
+proc = psutil.Process(pid=pid)
+proc.cpu_affinity([0])                   # Limit number of CPUs used for processing
+model_name = ''
+
+loc_performance_profile_training = r"C:\Users\mjzyl\OneDrive\Documents\GitHub\DeepShift\pytorch\performance_profiles_training.xlsx"
+loc_performance_accuracy_testing = r"C:\Users\mjzyl\OneDrive\Documents\GitHub\DeepShift\pytorch\performance_v_accuracy_testing.xlsx"
+
+def t_report_usage_training(name):
+    wait = 0.1
+    while True:
+        global training_perf, proc
+        training_perf = training_perf.append({
+            'Time' : time.ctime(time.time()),
+            'CPU%' : proc.cpu_percent()/len(proc.cpu_affinity()),
+            'RAM%' : proc.memory_percent(),
+            'NumCPUs' : len(proc.cpu_affinity())
+        }, ignore_index=True)
+        time.sleep(wait)
+        
+        global is_training
+        if not is_training:
+            break
+
+def report_usage_training():
+    t = threading.Thread(target=t_report_usage_training, args=(1,))
+    t.start()
+    return t
+
+def organize_performance_profile_training():
+    global training_perf, loc_performance_profile_training, model_name
+
+    training_perf_full = pd.read_excel(loc_performance_profile_training)
+    iterations = list(set(training_perf_full['IterationID']))
+    iterations.sort()
+
+    # Add an appropriate iteration ID to the full data
+    if len(iterations) == 0:
+        iterID = 0
+    else:
+        iterID = len(iterations)
+
+    # Add iteration-specific identifiers
+    training_perf['IterationID'] = iterID
+    training_perf['Dataset'] = 'MNIST'
+    training_perf['Model'] = model_name
+    
+    # Normalize time data
+    training_perf['Time'] = pd.to_datetime(training_perf['Time'])
+    time_start = training_perf.loc[0, 'Time']
+    training_perf['TimeAdjusted'] = training_perf['Time'].apply(lambda x: (x - time_start) + dt.datetime(1900, 1, 1))
+
+    # Merge iteration data with full data
+    training_perf_full = pd.concat([training_perf_full, training_perf])
+    training_perf_full.to_excel(loc_performance_profile_training, index=False)
+
+def organize_performance_accuracy_testing():
+    global testing_perf, loc_performance_accuracy_testing, model_name
+
+    testing_perf_full = pd.read_excel(loc_performance_accuracy_testing)
+    iterations = list(set(testing_perf_full['IterationID']))
+    iterations.sort()
+
+    # Add an appropriate iteration ID to the full data
+    if len(iterations) == 0:
+        iterID = 0
+    else:
+        iterID = len(iterations)
+
+    # Add iteration-specific identifiers
+    testing_perf['IterationID'] = iterID
+    testing_perf['Dataset'] = 'MNIST'
+    testing_perf['Model'] = model_name
+
+    # Merge iteration data with full data
+    testing_perf_full = pd.concat([testing_perf_full, testing_perf])
+    testing_perf_full.to_excel(loc_performance_accuracy_testing, index=False)   
+
+#############################################################################################
+
 
 class LinearMNIST(nn.Module):
     def __init__(self):
@@ -136,7 +228,6 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--pretrained', dest='pretrained', default=False, type=lambda x:bool(distutils.util.strtobool(x)), 
                         help='use pre-trained model of full conv or fc model')
-    
     parser.add_argument('--save-model', default=True, type=lambda x:bool(distutils.util.strtobool(x)), 
                         help='For Saving the current Model (default: True)')
     parser.add_argument('--print-weights', default=True, type=lambda x:bool(distutils.util.strtobool(x)), 
@@ -155,6 +246,8 @@ def main():
 
     device = torch.device("cuda" if use_cuda else "cpu")
     kwargs = {'num_workers': args.workers, 'pin_memory': True} if use_cuda else {}
+
+    # Load training MNIST data
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=True, download=True,
                        transform=transforms.Compose([
@@ -162,6 +255,8 @@ def main():
                            transforms.Normalize((0.1307,), (0.3081,)) # transforms.Normalize((0,), (255,))
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
+
+    # Load testing MNIST data
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=False, transform=transforms.Compose([
                            transforms.ToTensor(),
@@ -169,6 +264,7 @@ def main():
                        ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
+    # Use an existing model (directory path provided)
     if args.model:
         if args.type or args.pretrained:
             print("WARNING: Ignoring arguments \"type\" and \"pretrained\" when creating model...")
@@ -180,6 +276,8 @@ def main():
             model = saved_checkpoint["model"]
         else:
             raise Exception("Unable to load model from " + args.model)
+    
+    # Generate new model (linear or convolution)
     else:
         if args.type == 'linear':
             model = LinearMNIST().to(device)
@@ -274,6 +372,7 @@ def main():
     else:
         desc_label = ""
 
+    global model_name # MZ addition
     model_name = 'simple_%s/%s%s' % (args.type, shift_label, desc_label)
 
     # if evaluating round weights to ensure that the results are due to powers of 2 weights
@@ -315,11 +414,42 @@ def main():
             test_log_csv = csv.writer(test_log_file)
             test_log_csv.writerow(['test_loss', 'correct'])
             test_log_csv.writerows(test_log)
+
     else:
+        ###################################################################################################################################
+        # Start recording training usage metrics
+        global is_training
+        is_training = True
+        t = report_usage_training()
+        ###################################################################################################################################
+
         train_log = []
+        
+        ###################################################################################################################################
+        test_start = None
+        test_end = None
+        ###################################################################################################################################    
+
         for epoch in range(1, args.epochs + 1):
             train_loss = train(args, model, device, train_loader, loss_fn, optimizer, epoch)
+            test_start = time.time()
             test_loss, correct = test(args, model, device, test_loader, loss_fn)
+            test_end = time.time()
+
+            ###################################################################################################################################
+            # Record test-specific metrics
+            test_set_size = len(test_loader.dataset)
+            eval_time = test_end - test_start
+            
+            global testing_perf
+            testing_perf = testing_perf.append({
+                'TestSetSize' : test_set_size,
+                'EvaluationTime' : eval_time,
+                'Loss' : test_loss,
+                'Correct%' : correct/test_set_size,
+                'Epoch' : epoch
+            }, ignore_index=True)
+            ###################################################################################################################################
 
             if (args.print_weights):
                 with open(os.path.join(model_dir, 'weights_log_' + str(epoch) + '.txt'), 'w') as weights_log_file:
@@ -334,6 +464,16 @@ def main():
 
             train_log.append((epoch, train_loss, test_loss, correct/1e4))
 
+        ###################################################################################################################################
+        # Stop recording training usage metrics
+        is_training = False
+        t.join()
+        global training_perf
+        training_perf.to_excel(model_dir + '\\train_performance.xlsx', index=False)
+        organize_performance_profile_training()
+        organize_performance_accuracy_testing()
+        ###################################################################################################################################
+
         with open(os.path.join(model_dir, "train_log.csv"), "w") as train_log_file:
             train_log_csv = csv.writer(train_log_file)
             train_log_csv.writerow(['epoch', 'train_loss', 'test_loss', 'test_accuracy'])
@@ -344,10 +484,10 @@ def main():
 
             torch.save(model_rounded, os.path.join(model_dir, "model.pth"))
             torch.save(model_rounded.state_dict(), os.path.join(model_dir, "weights.pth"))
-
+    
     end_time = time.time()
     print("Total Time:", end_time - start_time )
-
+  
     if (args.print_weights):
         if(model_rounded is None):
             model_rounded = round_shift_weights(model, clone=True)

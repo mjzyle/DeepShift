@@ -32,6 +32,8 @@ import unoptimized
 
 import cifar10_models as models
 
+from distutils import util
+
 '''
 Unfortunately, none of the pytorch repositories with ResNets on CIFAR10 provides an 
 implementation as described in the original paper. If you just use the torchvision's 
@@ -560,7 +562,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # compute output
         output = model(input)
         loss = criterion(output, target)
-
+        
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
@@ -689,9 +691,9 @@ def accuracy(output, target, topk=(1,)):
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
-
         res = []
         for k in topk:
+            print(correct[:k].shape)
             correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res

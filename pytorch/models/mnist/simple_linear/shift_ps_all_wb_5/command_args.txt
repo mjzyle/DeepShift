@@ -14,7 +14,7 @@ resume:
 rounding: deterministic
 save_model: True
 seed: 1
-shift_depth: 1000
+shift_depth: 3
 shift_type: PS
 test_batch_size: 1000
 type: linear
