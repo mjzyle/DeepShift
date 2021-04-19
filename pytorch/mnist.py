@@ -36,8 +36,8 @@ proc = psutil.Process(pid=pid)
 proc.cpu_affinity([0])                   # Limit number of CPUs used for processing
 model_name = ''
 
-loc_performance_profile_training = r"C:\Users\mjzyl\OneDrive\Documents\GitHub\DeepShift\pytorch\performance_profiles_training.xlsx"
-loc_performance_accuracy_testing = r"C:\Users\mjzyl\OneDrive\Documents\GitHub\DeepShift\pytorch\performance_v_accuracy_testing.xlsx"
+loc_performance_profile_training = r"/home/alex/DeepShift/pytorch/performance_profiles_training.xlsx"
+loc_performance_accuracy_testing = r"/home/alex/DeepShift/pytorch/performance_v_accuracy_testing.xlsx"
 
 def t_report_usage_training(name):
     wait = 0.1

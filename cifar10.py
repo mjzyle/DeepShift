@@ -35,6 +35,9 @@ import cifar10_models as models
 
 ## MATT ADDITIONS ############################################################################
 
+import ctypes
+ctypes.cdll.LoadLibrary('caffe2_nvrtc.dll')
+
 import psutil
 import threading
 import pandas as pd 
