@@ -5,7 +5,7 @@ desc: None
 dist_backend: nccl
 dist_url: tcp://224.66.41.62:23456
 distributed: False
-epochs: 5
+epochs: 200
 evaluate: False
 freeze: False
 gpu: None

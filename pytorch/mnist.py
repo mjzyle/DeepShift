@@ -21,7 +21,11 @@ from unoptimized.convert import convert_to_unoptimized
 
 ## MATT ADDITIONS ############################################################################
 
+import ctypes
+ctypes.cdll.LoadLibrary('caffe2_nvrtc.dll')
+
 import psutil
+import GPUtil
 import threading
 import pandas as pd 
 import datetime as dt
@@ -29,12 +33,14 @@ from distutils import util
 
 is_training = False
 is_testing = False
+log_epoch = -1
 training_perf = pd.DataFrame()
 testing_perf = pd.DataFrame()
 pid = os.getpid()
 proc = psutil.Process(pid=pid)
 proc.cpu_affinity([0])                   # Limit number of CPUs used for processing
 model_name = ''
+target_accuracy = 0.99
 
 loc_performance_profile_training = r"/home/alex/DeepShift/pytorch/performance_profiles_training.xlsx"
 loc_performance_accuracy_testing = r"/home/alex/DeepShift/pytorch/performance_v_accuracy_testing.xlsx"
@@ -42,12 +48,17 @@ loc_performance_accuracy_testing = r"/home/alex/DeepShift/pytorch/performance_v_
 def t_report_usage_training(name):
     wait = 0.1
     while True:
-        global training_perf, proc
+        global training_perf, proc, epoch
+        gpu_util, gpu_mem = GPUtil.showUtilization()
         training_perf = training_perf.append({
             'Time' : time.ctime(time.time()),
             'CPU%' : proc.cpu_percent()/len(proc.cpu_affinity()),
+            'GPU%' : sum(gpu_util),
+            'GPU_MEM%' : sum(gpu_mem),
             'RAM%' : proc.memory_percent(),
-            'NumCPUs' : len(proc.cpu_affinity())
+            'NumCPUs' : len(proc.cpu_affinity()),
+            'NumGPUs' : len(GPUtil.getGPUs()),
+            'Epoch' : log_epoch
         }, ignore_index=True)
         time.sleep(wait)
         
